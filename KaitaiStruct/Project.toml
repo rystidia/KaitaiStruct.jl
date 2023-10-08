@@ -1,0 +1,10 @@
+name = "KaitaiStruct"
+uuid = "701c8e6d-1b01-4551-886b-1760f51f9f8d"
+authors = ["Dias Rystin <dias_rystin@icloud.com>"]
+version = "0.1.0"
+
+[deps]
+CodecZlib = "944b1d66-785c-5afd-91f1-9de20f533193"
+StringEncodings = "69024149-9ee7-55f6-a4c4-859efe599b68"
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+TestReports = "dcd651b4-b50a-5b6b-8f22-87e9f253a252"

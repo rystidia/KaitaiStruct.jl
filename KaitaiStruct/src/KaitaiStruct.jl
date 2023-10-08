@@ -1,6 +1,8 @@
-abstract type KaitaiStruct end
+module KaitaiStruct
 
-struct KaitaiStream
+export all
+
+mutable struct KaitaiStream
     io::IO
     bits_left
     bits
@@ -13,7 +15,7 @@ pos(stream::KaitaiStream) = position(stream.io)
 
 seek(stream::KaitaiStream, n::Integer) = Base.seek(stream.io, n)
 
-iseof(stream::KaitaiStream) = eof(stream.io)
+iseof(stream::KaitaiStream) = eof(stream.io) && stream.bits_left == 0
 
 function size(stream::KaitaiStream)
     mark(stream.io)
@@ -32,12 +34,11 @@ readU2be(stream::KaitaiStream) = read_number_be(stream, UInt16)
 readU4be(stream::KaitaiStream) = read_number_be(stream, UInt32)
 readU8be(stream::KaitaiStream) = read_number_be(stream, UInt64)
 
-readS1le(stream::KaitaiStream) = read_number_le(stream, Int8)
 readS2le(stream::KaitaiStream) = read_number_le(stream, Int16)
 readS4le(stream::KaitaiStream) = read_number_le(stream, Int32)
 readS8le(stream::KaitaiStream) = read_number_le(stream, Int64)
 
-readS1be(stream::KaitaiStream) = read_number_be(stream, Int8)
+readS1(stream::KaitaiStream) = read_number_be(stream, Int8)
 readS2be(stream::KaitaiStream) = read_number_be(stream, Int16)
 readS4be(stream::KaitaiStream) = read_number_be(stream, Int32)
 readS8be(stream::KaitaiStream) = read_number_be(stream, Int64)
@@ -47,7 +48,7 @@ readF8le(stream::KaitaiStream) = read_number_le(stream, Float64)
 readF4be(stream::KaitaiStream) = read_number_be(stream, Float32)
 readF8be(stream::KaitaiStream) = read_number_be(stream, Float64)
 
-function read_number_le(stream::KaitaiStream, T::Union{Type{Int8},Type{UInt8},Type{Int16},Type{UInt16},Type{Int32},Type{UInt32},Type{Int64},Type{UInt64},Type{Float32},Type{Float64}})
+function read_number_le(stream::KaitaiStream, T::DataType)
     try
         return htol(read(stream.io, T))
     catch e
@@ -59,7 +60,7 @@ function read_number_le(stream::KaitaiStream, T::Union{Type{Int8},Type{UInt8},Ty
     end
 end
 
-function read_number_be(stream::KaitaiStream, T::Union{Type{Int8},Type{UInt8},Type{Int16},Type{UInt16},Type{Int32},Type{UInt32},Type{Int64},Type{UInt64},Type{Float32},Type{Float64}})
+function read_number_be(stream::KaitaiStream, T::DataType)
     try
         return hton(read(stream.io, T))
     catch e
@@ -71,61 +72,59 @@ function read_number_be(stream::KaitaiStream, T::Union{Type{Int8},Type{UInt8},Ty
     end
 end
 
-function read_bits_int_be(stream::KaitaiStream, n::Int)
-    res = 0
+function read_bits_int_be(stream::KaitaiStream, n::Integer)
+    res = BigInt(0)
 
     bits_needed = n - stream.bits_left
     stream.bits_left = -bits_needed & 7
 
     if bits_needed > 0
-        bytes_needed = ((bits_needed - 1) ÷ 8) + 1
+        bytes_needed::UInt64 = fld((bits_needed - 1), 8) + 1
         buf = read_bytes(stream, bytes_needed)
         for byte in buf
-            res = res << 8 | byte
+            res = res << 8 | (byte & 0xff)
         end
 
         new_bits = res
-        res = res >> stream.bits_left | stream.bits << bits_needed
+        res = res >>> stream.bits_left | stream.bits << bits_needed
         stream.bits = new_bits
     else
-        res = stream.bits >> -bits_needed
+        res = stream.bits >>> -bits_needed
     end
 
-    mask = (1 << stream.bits_left) - 1
+    mask = (BigInt(1) << stream.bits_left) - 1
     stream.bits &= mask
-
     res
 end
 
-function read_bits_int_le(stream::KaitaiStream, n::Int)
-    res = 0
+function read_bits_int_le(stream::KaitaiStream, n::Integer)
+    res = BigInt(0)
     bits_needed = n - stream.bits_left
 
     if bits_needed > 0
         bytes_needed = ((bits_needed - 1) ÷ 8) + 1
         buf = read_bytes(stream, bytes_needed)
-        for byte in buf
-            res = byte << (i * 8)
+        for (i, byte) in enumerate(buf)
+            res |= BigInt(byte) << ((i - 1) * 8)
         end
 
-        new_bits = res >> bits_needed
+        new_bits = bits_needed < 64 ? res >>> bits_needed : 0
         res = res << stream.bits_left | stream.bits
         stream.bits = new_bits
     else
         res = stream.bits
-        stream.bits >>= n
+        stream.bits >>>= n
     end
 
-    stream.bits_left = -bits_needed
+    stream.bits_left = -bits_needed & 7
 
-    mask = (1 << n) - 1
+    mask = (BigInt(1) << n) - 1
     res &= mask
-
     res
 end
 
-function read_bytes(stream::KaitaiStream, n::Int)
-    r = read(stream.io, n)
+function read_bytes(stream::KaitaiStream, n::Integer)
+    r = read(stream.io, n::Integer)
     if length(r) < n
         error(string("requested ", n, " bytes, but only ", length(r), " bytes available"))
     end
@@ -156,7 +155,13 @@ function align_to_byte(stream::KaitaiStream)
     stream.bits_left = 0
 end
 
-bytes_strip_right(data, pad_byte) = rstrip(data, pad_byte)
+function bytes_strip_right(data::Vector{UInt8}, pad_byte)
+    new_len = length(data)
+    while new_len >= 1 && data[new_len] == pad_byte
+        new_len -= 1
+    end
+    data[1:new_len]
+end
 
 function bytes_terminate(src::Vector{UInt8}, term, include_term)
     new_len = 1
@@ -182,8 +187,14 @@ function process_xor(data::Vector{UInt8}, key::Vector{UInt8})
     value_len = length(key)
 
     r = Vector{UInt8}(undef, data_len)
+    # for i in eachindex(data)
+    #     r[i] = data[i] ⊻ key[i%value_len]
+    # end
+
+    j = 1
     for i in eachindex(data)
-        r[i] = data[i] ⊻ key[i%value_len]
+        r[i] = data[i] ⊻ key[j == 0 ? value_len : j]
+        j = (j + 1) % value_len
     end
     r
 end
@@ -193,11 +204,13 @@ function process_rotate_left(data::Vector{UInt8}, amount, group_size)
 
     r = Vector{UInt8}(undef, length(data))
     for i in eachindex(data)
+        bits = data[i]
         r[i] = (((data[i] & 0xff) << amount) | ((bits & 0xff) >>> (8 - amount)))
     end
     r
 end
 
+# this mod may already exist in Julia.Base
 function mod(a, b)
     b <= 0 && error("mod divisor <= 0")
     r = a % b
@@ -205,6 +218,14 @@ function mod(a, b)
         r += b
     end
     r
+end
+
+function resolve_enum(enum::DataType, value)
+    try
+        enum(value)
+    catch _
+        value
+    end
 end
 
 abstract type ValidationFailedError <: Exception end
@@ -230,6 +251,14 @@ function _format_msg_value(value::Any)
     string(value)
 end
 
+struct UndecidedEndiannessError <: Exception
+    src::String
+end
+
+function Base.showerror(io::IO, e::UndecidedEndiannessError)
+    print(io, "unable to decide on endianness for a type " * e.src)
+end
+
 struct ValidationNotEqualError <: ValidationFailedError
     expected::Any
     actual::Any
@@ -241,7 +270,7 @@ end
 
 function Base.showerror(io::IO, e::ValidationNotEqualError)
     print(io, _msg_with_location(e.location_info,
-        string("validation failed: not equal, expected ", _format_msg_value(e.expected), ", but got ", _format_msg_value(e.actual))))
+        "validation failed: not equal, expected $(_format_msg_value(e.expected)), but got $(_format_msg_value(e.actual))"))
 end
 
 struct ValidationLessThanError <: ValidationFailedError
@@ -297,3 +326,5 @@ function Base.showerror(io::IO, e::ValidationExprError)
     print(io, _msg_with_location(e.location_info,
         string("validation failed: not matching the expression, got ", _format_msg_value(e.expected))))
 end
+
+end # module KaitaiStruct
