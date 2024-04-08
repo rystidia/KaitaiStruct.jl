@@ -2,6 +2,8 @@ module KaitaiStruct
 
 export all
 
+abstract type UserType end
+
 mutable struct KaitaiStream
     io::IO
     bits_left
@@ -73,7 +75,7 @@ function read_number_be(stream::KaitaiStream, T::DataType)
 end
 
 function read_bits_int_be(stream::KaitaiStream, n::Integer)
-    res = BigInt(0)
+    res = UInt64(0)
 
     bits_needed = n - stream.bits_left
     stream.bits_left = -bits_needed & 7
@@ -92,20 +94,20 @@ function read_bits_int_be(stream::KaitaiStream, n::Integer)
         res = stream.bits >>> -bits_needed
     end
 
-    mask = (BigInt(1) << stream.bits_left) - 1
+    mask = (UInt64(1) << stream.bits_left) - 1
     stream.bits &= mask
     res
 end
 
 function read_bits_int_le(stream::KaitaiStream, n::Integer)
-    res = BigInt(0)
+    res = UInt64(0)
     bits_needed = n - stream.bits_left
 
     if bits_needed > 0
         bytes_needed = ((bits_needed - 1) ÷ 8) + 1
         buf = read_bytes(stream, bytes_needed)
         for (i, byte) in enumerate(buf)
-            res |= BigInt(byte) << ((i - 1) * 8)
+            res |= UInt64(byte) << ((i - 1) * 8)
         end
 
         new_bits = bits_needed < 64 ? res >>> bits_needed : 0
@@ -118,7 +120,7 @@ function read_bits_int_le(stream::KaitaiStream, n::Integer)
 
     stream.bits_left = -bits_needed & 7
 
-    mask = (BigInt(1) << n) - 1
+    mask = (UInt64(1) << n) - 1
     res &= mask
     res
 end
@@ -210,14 +212,9 @@ function process_rotate_left(data::Vector{UInt8}, amount, group_size)
     r
 end
 
-# this mod may already exist in Julia.Base
 function mod(a, b)
     b <= 0 && error("mod divisor <= 0")
-    r = a % b
-    if r < 0
-        r += b
-    end
-    r
+    Base.mod(a, b)
 end
 
 function resolve_enum(enum::DataType, value)
