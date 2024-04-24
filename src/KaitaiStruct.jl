@@ -4,6 +4,21 @@ export all
 
 abstract type UserType end
 
+"""
+KaitaiStream
+
+Mutable structure that encapsulates a stream of binary data with support for bit-level operations.
+This structure is used for reading binary data and supports various
+operations like reading integers, floating-point numbers, and handling bit-level operations.
+
+# Fields:
+- `io::IO`: The underlying I/O stream.
+- `bits_left::Int`: Number of bits left in the current byte buffer.
+- `bits::UInt64`: The current bit buffer.
+
+# Constructors
+- `KaitaiStream(io::IO)`: Creates a new KaitaiStream with the given IO object.
+"""
 mutable struct KaitaiStream
     io::IO
     bits_left
@@ -50,6 +65,21 @@ readF8le(stream::KaitaiStream) = read_number_le(stream, Float64)
 readF4be(stream::KaitaiStream) = read_number_be(stream, Float32)
 readF8be(stream::KaitaiStream) = read_number_be(stream, Float64)
 
+"""
+read_number_le(stream::KaitaiStream, T::DataType) -> T
+
+Reads a number from the `KaitaiStream` in little-endian format.
+
+Parameters:
+- `stream`: The `KaitaiStream` instance from which to read.
+- `T`: The data type to read (e.g., `UInt16`, `UInt32`).
+
+Returns:
+- A number of the specified type read from the stream.
+
+Throws:
+- `EOFError`: If the end of the stream is reached unexpectedly.
+"""
 function read_number_le(stream::KaitaiStream, T::DataType)
     try
         return htol(read(stream.io, T))
@@ -62,6 +92,21 @@ function read_number_le(stream::KaitaiStream, T::DataType)
     end
 end
 
+"""
+read_number_le(stream::KaitaiStream, T::DataType) -> T
+
+Reads a number from the `KaitaiStream` in big-endian format.
+
+Parameters:
+- `stream`: The `KaitaiStream` instance from which to read.
+- `T`: The data type to read (e.g., `UInt16`, `UInt32`).
+
+Returns:
+- A number of the specified type read from the stream.
+
+Throws:
+- `EOFError`: If the end of the stream is reached unexpectedly.
+"""
 function read_number_be(stream::KaitaiStream, T::DataType)
     try
         return hton(read(stream.io, T))
@@ -225,6 +270,12 @@ function resolve_enum(enum::DataType, value)
     end
 end
 
+"""
+ValidationFailedError
+
+Abstract type representing validation errors in the Kaitai Struct framework.
+Used to signify that some validation condition has failed during parsing.
+"""
 abstract type ValidationFailedError <: Exception end
 
 struct _LocationInfo
@@ -248,6 +299,13 @@ function _format_msg_value(value::Any)
     string(value)
 end
 
+"""
+UndecidedEndiannessError
+
+Error that occurs when default endianness should be decided with
+switch, but nothing matches (although using endianness expression
+implies that there should be some positive result).
+"""
 struct UndecidedEndiannessError <: Exception
     src::String
 end
@@ -256,6 +314,12 @@ function Base.showerror(io::IO, e::UndecidedEndiannessError)
     print(io, "unable to decide on endianness for a type " * e.src)
 end
 
+"""
+ValidationNotEqualError
+
+Signals validation failure: we required "actual" value to be equal to
+"expected", but it turned out that it's not.
+"""
 struct ValidationNotEqualError <: ValidationFailedError
     expected::Any
     actual::Any
@@ -270,6 +334,12 @@ function Base.showerror(io::IO, e::ValidationNotEqualError)
         "validation failed: not equal, expected $(_format_msg_value(e.expected)), but got $(_format_msg_value(e.actual))"))
 end
 
+"""
+ValidationLessThanError
+
+Signals validation failure: we required "actual" value to be
+less than or equal to "max", but it turned out that it's not.
+"""
 struct ValidationLessThanError <: ValidationFailedError
     min::Any
     actual::Any
@@ -284,6 +354,12 @@ function Base.showerror(io::IO, e::ValidationLessThanError)
         string("validation failed: not in range, min ", _format_msg_value(e.min), ", but got ", _format_msg_value(e.actual))))
 end
 
+"""
+ValidationGreaterThanError
+
+Signals validation failure: we required "actual" value to be
+greater than or equal to "min", but it turned out that it's not.
+"""
 struct ValidationGreaterThanError <: ValidationFailedError
     max::Any
     actual::Any
@@ -298,6 +374,12 @@ function Base.showerror(io::IO, e::ValidationGreaterThanError)
         string("validation failed: not in range, max ", _format_msg_value(e.expected), ", but got ", _format_msg_value(e.actual))))
 end
 
+"""
+ValidationNotAnyOfError
+
+Signals validation failure: we required "actual" value to be
+from the list, but it turned out that it's not.
+"""
 struct ValidationNotAnyOfError <: ValidationFailedError
     actual::Any
     location_info::_LocationInfo
@@ -311,6 +393,12 @@ function Base.showerror(io::IO, e::ValidationNotAnyOfError)
         string("validation failed: not any of the list, got ", _format_msg_value(e.expected))))
 end
 
+"""
+ValidationExprError
+
+Signals validation failure: we required "actual" value to match
+the expression, but it turned out that it doesn't.
+"""
 struct ValidationExprError <: ValidationFailedError
     actual::Any
     location_info::_LocationInfo
