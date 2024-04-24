@@ -11,7 +11,7 @@ StringEncodings = "69024149-9ee7-55f6-a4c4-859efe599b68"
 [compat]
 CodecZlib = "0.7.2"
 CompatHelper = "3.10.0"
-StringEncodings = "3.10.0"
+StringEncodings = "0.3.7"
 
 [extras]
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
