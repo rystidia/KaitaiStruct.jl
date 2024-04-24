@@ -7,7 +7,10 @@ version = "0.1.0"
 CodecZlib = "944b1d66-785c-5afd-91f1-9de20f533193"
 CompatHelper = "aa819f21-2bde-4658-8897-bab36330d9b7"
 StringEncodings = "69024149-9ee7-55f6-a4c4-859efe599b68"
-TestReports = "dcd651b4-b50a-5b6b-8f22-87e9f253a252"
 
 [extras]
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+TestReports = "dcd651b4-b50a-5b6b-8f22-87e9f253a252"
+
+[targets]
+test = ["Test", "TestReports"]
